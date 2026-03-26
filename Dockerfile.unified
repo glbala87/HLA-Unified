@@ -1,0 +1,101 @@
+# HLA-Unified V2 Production Dockerfile
+# Multi-stage build for reproducible HLA typing
+#
+# Build:   docker build -f Dockerfile.unified -t hla-unified:2.0.0 .
+# Run:     docker run -v /data:/data hla-unified:2.0.0 type \
+#            --bam /data/sample.bam --imgt-db /data/IMGTHLA --out /data/results
+# Strict:  docker run -v /data:/data hla-unified:2.0.0 type \
+#            --bam /data/sample.bam --imgt-db /data/IMGTHLA --out /data/results \
+#            --profile transplant --strict-reproducibility
+
+# ===== Stage 1: Build environment =====
+FROM python:3.11-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    git \
+    wget \
+    zlib1g-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libncurses5-dev \
+    libcurl4-openssl-dev \
+    libssl-dev \
+    autoconf \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install samtools 1.19
+RUN wget -q https://github.com/samtools/samtools/releases/download/1.19/samtools-1.19.tar.bz2 \
+    && tar xjf samtools-1.19.tar.bz2 \
+    && cd samtools-1.19 && ./configure --prefix=/usr/local && make -j4 && make install \
+    && cd .. && rm -rf samtools-1.19*
+
+# Install minimap2 2.26
+RUN wget -q https://github.com/lh3/minimap2/releases/download/v2.26/minimap2-2.26_x64-linux.tar.bz2 \
+    && tar xjf minimap2-2.26_x64-linux.tar.bz2 \
+    && cp minimap2-2.26_x64-linux/minimap2 /usr/local/bin/ \
+    && rm -rf minimap2-2.26*
+
+# Install bowtie2 2.5.3
+RUN wget -q https://github.com/BenLangmead/bowtie2/releases/download/v2.5.3/bowtie2-2.5.3-linux-x86_64.zip \
+    && unzip -q bowtie2-2.5.3-linux-x86_64.zip \
+    && cp bowtie2-2.5.3-linux-x86_64/bowtie2* /usr/local/bin/ \
+    && rm -rf bowtie2-2.5.3*
+
+# Install megahit 1.2.9
+RUN wget -q https://github.com/voutcn/megahit/releases/download/v1.2.9/MEGAHIT-1.2.9-Linux-x86_64-static.tar.gz \
+    && tar xzf MEGAHIT-1.2.9-Linux-x86_64-static.tar.gz \
+    && cp MEGAHIT-1.2.9-Linux-x86_64-static/bin/megahit* /usr/local/bin/ \
+    && rm -rf MEGAHIT-1.2.9*
+
+# ===== Stage 2: Runtime =====
+FROM python:3.11-slim
+
+# Copy compiled tools from builder
+COPY --from=builder /usr/local/bin/samtools /usr/local/bin/
+COPY --from=builder /usr/local/bin/minimap2 /usr/local/bin/
+COPY --from=builder /usr/local/bin/bowtie2* /usr/local/bin/
+COPY --from=builder /usr/local/bin/megahit* /usr/local/bin/
+
+# Runtime libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libcurl4 \
+    libbz2-1.0 \
+    liblzma5 \
+    zlib1g \
+    libncurses6 \
+    procps \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+RUN pip install --no-cache-dir \
+    numpy>=1.24 \
+    scipy>=1.10 \
+    pysam>=0.21 \
+    click>=8.0 \
+    PuLP>=2.7 \
+    msgpack>=1.0
+
+# Install HLA-Unified V2
+COPY hla_unified/ /opt/hla-unified/hla_unified/
+COPY setup.py pyproject.toml /opt/hla-unified/ 2>/dev/null || true
+
+WORKDIR /opt/hla-unified
+
+# Create entry point script
+RUN echo '#!/bin/bash\npython -m hla_unified "$@"' > /usr/local/bin/hla-unified \
+    && chmod +x /usr/local/bin/hla-unified
+
+# Verify tools
+RUN samtools --version | head -1 \
+    && minimap2 --version \
+    && bowtie2 --version 2>&1 | head -1 \
+    && python -c "import hla_unified; print(f'HLA-Unified v{hla_unified.__version__}')"
+
+ENTRYPOINT ["hla-unified"]
+CMD ["--help"]
+
+LABEL maintainer="HLA-Unified Team"
+LABEL version="2.0.0"
+LABEL description="HLA-Unified V2: Multi-strategy HLA typing with ambiguity classification"
+LABEL org.opencontainers.image.source="https://github.com/ANHIG/HLA-LA"

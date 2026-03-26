@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "hla-unified"
+version = "2.0.0"
+description = "Multi-strategy HLA typing with ambiguity classification, novel allele detection, and clinical reporting"
+requires-python = ">=3.10"
+license = {text = "GPL-3.0"}
+dependencies = [
+    "pysam>=0.21",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "click>=8.1",
+    "pulp>=2.7",
+    "biopython>=1.81",
+    "msgpack>=1.0",
+]
+
+[project.optional-dependencies]
+fast = ["numba>=0.57"]
+dev = ["pytest>=7.0", "pytest-cov"]
+benchmark = ["matplotlib>=3.7", "pandas>=2.0"]
+# Install the legacy hlala graph-based engine
+graph = ["intervaltree>=3.1"]
+
+[project.scripts]
+hla-unified = "hla_unified.__main__:cli"
+
+[tool.setuptools.packages.find]
+include = ["hla_unified*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
