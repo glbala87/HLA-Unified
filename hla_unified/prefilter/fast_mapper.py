@@ -198,7 +198,16 @@ class FastPrefilter:
     def _count_and_filter(
         self, bam_path: Path, loci: list[str]
     ) -> PrefilterResults:
-        """Count reads per allele and select top candidates per locus."""
+        """Count reads per allele and select top candidates per locus.
+
+        Groups allele counts by 2-digit resolution (allele group) before
+        ranking, so common allele groups like A*01:01 accumulate reads
+        from all their subtypes (A*01:01:01:01, A*01:01:01:02N, etc.)
+        instead of being diluted across hundreds of near-identical entries.
+        Then expands the top groups back to include all member alleles.
+        """
+        from ..reference.loci import group_alleles_by_resolution
+
         allele_counts: Counter[str] = Counter()
         total_reads = 0
 
@@ -223,6 +232,10 @@ class FastPrefilter:
             total_mapped_reads=total_reads,
         )
 
+        # Load population frequency priors to favor common alleles
+        from ..reference.frequencies import load_default_frequencies
+        freq_db = load_default_frequencies()
+
         for locus in loci:
             counts = locus_alleles.get(locus, Counter())
             if not counts:
@@ -232,16 +245,53 @@ class FastPrefilter:
                 continue
 
             total_locus = sum(counts.values())
-            min_reads = max(2, int(total_locus * self.min_read_fraction))
 
-            filtered = {a: c for a, c in counts.items() if c >= min_reads}
-            top = sorted(filtered.items(), key=lambda x: -x[1])
-            top = top[:self.max_candidates]
+            # Group by 2-field (allele group) to avoid diluting common
+            # alleles across hundreds of near-identical subtypes.
+            # e.g. A*01:01:01:01 + A*01:01:01:02N + ... → A*01:01 group
+            groups_2d = group_alleles_by_resolution(list(counts.keys()), level=2)
+
+            # Score each 2-field group: read count + frequency prior bonus.
+            # Frequency bonus is scaled relative to read counts so common
+            # alleles get a boost without overwhelming strong read evidence.
+            group_scores: dict[str, float] = {}
+            max_reads = max(sum(counts.get(m, 0) for m in members)
+                            for members in groups_2d.values())
+            for group_name, members in groups_2d.items():
+                read_score = sum(counts.get(m, 0) for m in members)
+                freq = freq_db.get_frequency(group_name)
+                # Frequency bonus = up to 10% of max reads for top common alleles
+                freq_bonus = freq * max_reads * 2.0
+                group_scores[group_name] = read_score + freq_bonus
+
+            # Select top allele groups (after frequency-weighted scoring)
+            min_reads = max(2, int(total_locus * self.min_read_fraction))
+            top_groups = sorted(
+                ((g, s) for g, s in group_scores.items()
+                 if sum(counts.get(m, 0) for m in groups_2d[g]) >= min_reads),
+                key=lambda x: -x[1],
+            )
+            max_groups = min(self.max_candidates, len(top_groups))
+            top_groups = top_groups[:max_groups]
+
+            # Expand back to all alleles in the top groups
+            candidates = []
+            candidate_counts = {}
+            for group_name, _ in top_groups:
+                members = groups_2d.get(group_name, [])
+                for m in members:
+                    candidates.append(m)
+                    candidate_counts[m] = counts[m]
+
+            # Cap total candidates
+            if len(candidates) > self.max_candidates:
+                candidates.sort(key=lambda a: -candidate_counts.get(a, 0))
+                candidates = candidates[:self.max_candidates]
 
             results.per_locus[locus] = PrefilterResult(
                 locus=locus,
-                candidate_alleles=[a for a, _ in top],
-                read_counts=dict(top),
+                candidate_alleles=candidates,
+                read_counts=candidate_counts,
                 total_reads_mapped=total_locus,
             )
 

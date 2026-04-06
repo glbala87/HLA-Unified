@@ -218,9 +218,13 @@ class UnifiedPipeline:
             data_type=self.data_type,
         )
 
+        # Use GENOMIC sequences for prefiltering (not CDS-only).
+        # WGS reads span exon-intron boundaries; CDS-only reference
+        # wastes most reads. Genomic sequences (~3-4KB) capture intronic
+        # reads and provide much better mapping rates with minimap2.
         ref_fasta = self.work_dir / "imgt_combined.fa"
         self.imgt_db.build_combined_reference(
-            self.loci, ref_fasta, genomic=False,
+            self.loci, ref_fasta, genomic=True,
         )
 
         pf_results = prefilter.run(
@@ -228,15 +232,32 @@ class UnifiedPipeline:
         )
         phases_completed.append("prefilter")
 
-        # Collect candidate sequences
+        # Extract HLA-matching reads from prefilter BAM for downstream use.
+        # The full MHC extraction (r1, r2) contains millions of reads from
+        # the entire ~5MB MHC region, but only a fraction are from HLA genes.
+        # Using all MHC reads for refinement/genotyping floods the matrix
+        # with non-HLA noise. Instead, extract the reads that actually
+        # aligned to the IMGT reference during prefiltering.
+        pf_bam = self.work_dir / "prefilter" / "prefilter.bam"
+        hla_r1, hla_r2 = self._extract_hla_reads(pf_bam)
+        logger.info("Extracted HLA-matching reads for downstream phases")
+
+        # Collect candidate sequences.
+        # Candidates come from genomic prefilter; load BOTH CDS and
+        # genomic sequences so refinement/ILP can use either.
         all_candidates: dict[str, list[str]] = {}
         all_sequences: dict[str, str] = {}
         for locus in self.loci:
             pf = pf_results.per_locus.get(locus)
             if pf and pf.candidate_alleles:
                 all_candidates[locus] = pf.candidate_alleles
+                # Load CDS first (preferred for refinement — smaller, faster)
                 seqs = self.imgt_db.load_cds(locus)
-                seqs.update(self.imgt_db.load_genomic(locus))
+                # Also load genomic for alleles not in CDS
+                gen_seqs = self.imgt_db.load_genomic(locus)
+                for name, seq in gen_seqs.items():
+                    if name not in seqs:
+                        seqs[name] = seq
                 all_sequences.update(seqs)
             else:
                 all_candidates[locus] = []
@@ -248,7 +269,7 @@ class UnifiedPipeline:
                 threads=self.threads, data_type=self.data_type,
             )
             ref_results = refiner.refine(
-                r1, r2, all_candidates, all_sequences,
+                hla_r1, hla_r2, all_candidates, all_sequences,
                 self.work_dir / "refinement",
             )
             for locus, result in ref_results.items():
@@ -263,7 +284,7 @@ class UnifiedPipeline:
         phaser = HaplotypeBinner()
         # We need a BAM aligned to candidates for phasing — build it now
         refined_bam = self._build_refined_alignment(
-            r1, r2, all_candidates, all_sequences,
+            hla_r1, hla_r2, all_candidates, all_sequences,
         )
         phasing_results = phaser.phase_all_loci(
             refined_bam, self.loci, all_candidates, all_sequences,
@@ -282,9 +303,9 @@ class UnifiedPipeline:
 
         # === Phase 3: ILP Genotyping ===
         logger.info("=== Phase 3: ILP Genotyping (OptiType-style) ===")
-        # Rebuild alignment if candidates changed from phasing
+        # Rebuild alignment against refined candidates for matrix building
         refined_bam = self._build_refined_alignment(
-            r1, r2, all_candidates, all_sequences,
+            hla_r1, hla_r2, all_candidates, all_sequences,
         )
         flat_candidates = [
             a for locus_alleles in all_candidates.values()
@@ -309,6 +330,10 @@ class UnifiedPipeline:
             self.loci, reads_per_locus_count,
         )
 
+        # Load population frequency priors for ILP
+        from ..reference.frequencies import load_default_frequencies
+        freq_db = load_default_frequencies()
+
         # Parallel ILP genotyping across loci
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -323,7 +348,14 @@ class UnifiedPipeline:
                     objective_value=0, is_homozygous=False,
                     solver_status="cnv_absent",
                 )
-            return locus, solve_ilp(sub, locus=locus)
+            # Get frequency priors for this locus's candidates
+            freq_priors = freq_db.get_locus_frequencies(
+                locus, sub.allele_names,
+            )
+            return locus, solve_ilp(
+                sub, locus=locus,
+                frequency_priors=freq_priors,
+            )
 
         ilp_results: dict[str, ILPResult] = {}
         with ThreadPoolExecutor(max_workers=min(self.threads, len(locus_matrices))) as pool:
@@ -572,6 +604,62 @@ class UnifiedPipeline:
             region=region_str,
         )
         return r1, r2
+
+    def _extract_hla_reads(self, prefilter_bam: Path) -> tuple[Path, Path | None]:
+        """Extract HLA-matching reads from prefilter BAM as FASTQ.
+
+        The prefilter BAM contains reads aligned to the IMGT reference.
+        Most reads are unmapped (from other MHC genes). We extract only
+        mapped reads and their mates, reducing millions of MHC reads
+        to ~tens of thousands of HLA-matching reads.
+        """
+        hla_dir = self.work_dir / "hla_reads"
+        hla_dir.mkdir(parents=True, exist_ok=True)
+
+        r1_out = hla_dir / "hla_R1.fastq.gz"
+        r2_out = hla_dir / "hla_R2.fastq.gz"
+
+        if r1_out.exists():
+            return r1_out, r2_out if r2_out.exists() else None
+
+        # Step 1: Extract only mapped reads (-F 4 = not unmapped)
+        mapped_bam = hla_dir / "mapped_only.bam"
+        run_cmd(
+            ["samtools", "view", "-b", "-F", "4",
+             "-o", str(mapped_bam), str(prefilter_bam)],
+            description="extract mapped reads from prefilter",
+        )
+
+        # Step 2: Name-sort for proper FASTQ pairing
+        namesorted = hla_dir / "namesorted.bam"
+        run_cmd(
+            ["samtools", "sort", "-n", "-@", str(self.threads),
+             "-o", str(namesorted), str(mapped_bam)],
+            description="name-sort mapped reads",
+        )
+
+        # Step 3: Convert to paired FASTQ
+        run_cmd(
+            ["samtools", "fastq",
+             "-1", str(r1_out), "-2", str(r2_out),
+             "-0", "/dev/null", "-s", "/dev/null",
+             "-n", str(namesorted)],
+            description="extract HLA reads as FASTQ",
+        )
+
+        # Clean up intermediate files
+        mapped_bam.unlink(missing_ok=True)
+        namesorted.unlink(missing_ok=True)
+
+        n_reads = 0
+        import gzip
+        with gzip.open(r1_out, "rt") as fh:
+            for line in fh:
+                if line.startswith("@"):
+                    n_reads += 1
+        logger.info("Extracted %d HLA-matching read pairs", n_reads)
+
+        return r1_out, r2_out if r2_out.exists() else None
 
     def _build_refined_alignment(
         self,

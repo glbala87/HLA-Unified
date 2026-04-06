@@ -1,0 +1,172 @@
+{
+  "dataset": "class_i_only",
+  "resolution": 2,
+  "n_samples": 10,
+  "n_loci": 3,
+  "overall_accuracy": 1.0,
+  "overall_call_rate": 1.0,
+  "per_locus": {
+    "A": {
+      "locus": "A",
+      "n_samples": 10,
+      "n_correct_both": 10,
+      "n_correct_one": 0,
+      "n_incorrect": 0,
+      "n_no_call": 0,
+      "accuracy": 1.0,
+      "call_rate": 1.0
+    },
+    "B": {
+      "locus": "B",
+      "n_samples": 10,
+      "n_correct_both": 10,
+      "n_correct_one": 0,
+      "n_incorrect": 0,
+      "n_no_call": 0,
+      "accuracy": 1.0,
+      "call_rate": 1.0
+    },
+    "C": {
+      "locus": "C",
+      "n_samples": 10,
+      "n_correct_both": 10,
+      "n_correct_one": 0,
+      "n_incorrect": 0,
+      "n_no_call": 0,
+      "accuracy": 1.0,
+      "call_rate": 1.0
+    }
+  },
+  "per_ancestry": {
+    "EUR": {
+      "A": {
+        "locus": "A",
+        "n_samples": 6,
+        "n_correct_both": 6,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "B": {
+        "locus": "B",
+        "n_samples": 6,
+        "n_correct_both": 6,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "C": {
+        "locus": "C",
+        "n_samples": 6,
+        "n_correct_both": 6,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      }
+    },
+    "AFR": {
+      "A": {
+        "locus": "A",
+        "n_samples": 1,
+        "n_correct_both": 1,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "B": {
+        "locus": "B",
+        "n_samples": 1,
+        "n_correct_both": 1,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "C": {
+        "locus": "C",
+        "n_samples": 1,
+        "n_correct_both": 1,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      }
+    },
+    "EAS": {
+      "A": {
+        "locus": "A",
+        "n_samples": 2,
+        "n_correct_both": 2,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "B": {
+        "locus": "B",
+        "n_samples": 2,
+        "n_correct_both": 2,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "C": {
+        "locus": "C",
+        "n_samples": 2,
+        "n_correct_both": 2,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      }
+    },
+    "AMR": {
+      "A": {
+        "locus": "A",
+        "n_samples": 1,
+        "n_correct_both": 1,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "B": {
+        "locus": "B",
+        "n_samples": 1,
+        "n_correct_both": 1,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      },
+      "C": {
+        "locus": "C",
+        "n_samples": 1,
+        "n_correct_both": 1,
+        "n_correct_one": 0,
+        "n_incorrect": 0,
+        "n_no_call": 0,
+        "accuracy": 1.0,
+        "call_rate": 1.0
+      }
+    }
+  },
+  "per_confidence": {},
+  "discordant_calls": []
+}

@@ -199,7 +199,7 @@ class IMGTDatabase:
             logger.warning("FASTA file not found: %s", fpath)
             return {}
 
-        seqs = dict(read_fasta(fpath))
+        seqs = dict(self._read_imgt_fasta(fpath))
         self._alleles[locus] = seqs
         logger.info("Loaded %d genomic alleles for %s", len(seqs), locus)
         return seqs
@@ -217,10 +217,41 @@ class IMGTDatabase:
         if not fpath.exists():
             return self.load_genomic(locus)
 
-        seqs = dict(read_fasta(fpath))
+        seqs = dict(self._read_imgt_fasta(fpath))
         self._cds[locus] = seqs
         logger.info("Loaded %d CDS alleles for %s", len(seqs), locus)
         return seqs
+
+    @staticmethod
+    def _read_imgt_fasta(path: Path) -> Iterator[tuple[str, str]]:
+        """Read IMGT/HLA FASTA files, using allele names as keys.
+
+        IMGT headers have the format:
+            >HLA:HLA00001 A*01:01:01:01 1098 bp
+        The first field is an accession; the second is the allele name.
+        We use the allele name as the key since the pipeline works with
+        allele names (e.g. A*01:01:01:01), not accessions.
+        """
+        from typing import Iterator
+        name = ""
+        parts: list[str] = []
+        with open(path) as fh:
+            for line in fh:
+                line = line.rstrip()
+                if line.startswith(">"):
+                    if name:
+                        yield name, "".join(parts)
+                    fields = line[1:].split()
+                    # Use allele name (2nd field) if available, else accession
+                    if len(fields) >= 2 and "*" in fields[1]:
+                        name = fields[1]
+                    else:
+                        name = fields[0]
+                    parts = []
+                else:
+                    parts.append(line.upper())
+        if name:
+            yield name, "".join(parts)
 
     def get_all_allele_names(self, locus: str) -> list[str]:
         """Get all allele names for a locus."""
@@ -280,17 +311,18 @@ class IMGTDatabase:
     def build_combined_reference(self, loci: list[str],
                                   output_path: Path,
                                   genomic: bool = True) -> None:
-        """Build a combined FASTA reference for multiple loci."""
+        """Build a combined FASTA reference for multiple loci.
+
+        Uses allele names (e.g. A*01:01:01:01) as FASTA keys so that
+        prefilter candidates match directly against load_cds/load_genomic keys.
+        """
         all_seqs: dict[str, str] = {}
         for locus in loci:
             if genomic:
                 seqs = self.load_genomic(locus)
             else:
                 seqs = self.load_cds(locus)
-            for name, seq in seqs.items():
-                # Prefix with locus for clarity
-                key = f"HLA-{name}" if not name.startswith("HLA-") else name
-                all_seqs[key] = seq
+            all_seqs.update(seqs)
 
         write_fasta(output_path, all_seqs)
         logger.info("Combined reference: %d sequences written to %s",

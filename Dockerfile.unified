@@ -72,8 +72,9 @@ RUN pip install --no-cache-dir \
     numpy>=1.24 \
     scipy>=1.10 \
     pysam>=0.21 \
-    click>=8.0 \
+    click>=8.1 \
     PuLP>=2.7 \
+    biopython>=1.81 \
     msgpack>=1.0
 
 # Install HLA-Unified V2

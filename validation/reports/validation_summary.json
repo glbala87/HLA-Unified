@@ -1,0 +1,90 @@
+{
+  "validation_date": "2026-04-05 23:13:08",
+  "tool": "HLA-Unified V2",
+  "full_benchmark": {
+    "dataset": "reference_10_samples",
+    "n_samples": 10,
+    "n_loci": 8,
+    "overall_accuracy": 0.9875,
+    "overall_call_rate": 1.0,
+    "per_locus": {
+      "A": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "B": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "C": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "DPA1": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "DPB1": {
+        "accuracy": 0.9,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "DQA1": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "DQB1": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      },
+      "DRB1": {
+        "accuracy": 1.0,
+        "call_rate": 1.0,
+        "n_samples": 10
+      }
+    },
+    "per_ancestry": {
+      "EUR": {
+        "accuracy": 1.0,
+        "n_samples": 6
+      },
+      "AFR": {
+        "accuracy": 0.9375,
+        "n_samples": 1
+      },
+      "EAS": {
+        "accuracy": 0.9688,
+        "n_samples": 2
+      },
+      "AMR": {
+        "accuracy": 1.0,
+        "n_samples": 1
+      }
+    },
+    "n_discordant_calls": 2
+  },
+  "class_i_benchmark": {
+    "overall_accuracy": 1.0,
+    "overall_call_rate": 1.0,
+    "n_samples": 10
+  },
+  "cross_caller_consensus": {
+    "sample": "NA12878",
+    "callers": [
+      "arcas_hla",
+      "hla_la",
+      "hla_unified",
+      "optitype",
+      "xhla"
+    ],
+    "overall_concordance": 1.0,
+    "concordant_loci": 8,
+    "discordant_loci": 0
+  }
+}

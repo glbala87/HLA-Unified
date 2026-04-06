@@ -1,0 +1,16 @@
+SampleID	Locus	Allele1	Allele2	Caller	CallerVersion	Source
+NA12878	HLA-A	A*01:01	A*11:01	OptiType	1.3.5	Szolek_2014_Bioinformatics
+NA12878	HLA-B	B*08:01	B*56:01	OptiType	1.3.5	Szolek_2014_Bioinformatics
+NA12878	HLA-C	C*01:02	C*07:01	OptiType	1.3.5	Szolek_2014_Bioinformatics
+HG002	HLA-A	A*01:01	A*26:01	OptiType	1.3.5	benchmark_run
+HG002	HLA-B	B*08:01	B*38:01	OptiType	1.3.5	benchmark_run
+HG002	HLA-C	C*07:01	C*12:03	OptiType	1.3.5	benchmark_run
+HG003	HLA-A	A*01:01	A*26:01	OptiType	1.3.5	benchmark_run
+HG003	HLA-B	B*08:01	B*38:01	OptiType	1.3.5	benchmark_run
+HG003	HLA-C	C*07:01	C*12:03	OptiType	1.3.5	benchmark_run
+HG004	HLA-A	A*01:01	A*02:01	OptiType	1.3.5	benchmark_run
+HG004	HLA-B	B*08:01	B*44:02	OptiType	1.3.5	benchmark_run
+HG004	HLA-C	C*05:01	C*07:01	OptiType	1.3.5	benchmark_run
+NA19240	HLA-A	A*23:01	A*30:02	OptiType	1.3.5	benchmark_run
+NA19240	HLA-B	B*15:10	B*53:01	OptiType	1.3.5	benchmark_run
+NA19240	HLA-C	C*03:04	C*04:01	OptiType	1.3.5	benchmark_run

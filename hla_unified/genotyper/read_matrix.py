@@ -76,12 +76,16 @@ def build_matrix_from_bam(
     bam_path: str | Path,
     candidate_alleles: list[str],
     min_mapq: int = 0,
-    min_alignment_score: int = 0,
 ) -> ReadAlleleMatrix:
     """Build read-allele matrix from a BAM file.
 
     Each cell contains the alignment score (AS tag) of that read
-    to that allele. Zero means no alignment.
+    to that allele, transformed so higher = better alignment.
+
+    Handles different aligner scoring conventions:
+    - bowtie2: AS <= 0 (0 = perfect, negative = mismatches)
+    - minimap2: AS >= 0 (higher = better)
+    - BWA: AS >= 0 (higher = better)
     """
     allele_to_idx = {a: i for i, a in enumerate(candidate_alleles)}
     read_scores: dict[str, dict[int, float]] = {}
@@ -102,20 +106,17 @@ def build_matrix_from_bam(
             except KeyError:
                 score = float(read.mapping_quality)
 
-            if score < min_alignment_score:
-                continue
-
             rname = read.query_name
             col = allele_to_idx[ref]
 
             if rname not in read_scores:
                 read_scores[rname] = {}
-            # Keep best score per read-allele pair
-            read_scores[rname][col] = max(
-                read_scores[rname].get(col, 0), score,
-            )
+            # Keep best (highest/least-negative) score per read-allele pair
+            prev = read_scores[rname].get(col)
+            if prev is None or score > prev:
+                read_scores[rname][col] = score
 
-    # Also collect supplementary/secondary alignments for multi-mapping
+    # Also collect secondary alignments for multi-mapping
     with pysam.AlignmentFile(str(bam_path), "rb") as bam:
         for read in bam.fetch(until_eof=True):
             if read.is_unmapped or not read.is_secondary:
@@ -131,9 +132,9 @@ def build_matrix_from_bam(
             rname = read.query_name
             col = allele_to_idx[ref]
             if rname in read_scores:
-                read_scores[rname][col] = max(
-                    read_scores[rname].get(col, 0), score,
-                )
+                prev = read_scores[rname].get(col)
+                if prev is None or score > prev:
+                    read_scores[rname][col] = score
 
     # Build dense matrix
     read_names = sorted(read_scores.keys())
@@ -148,14 +149,21 @@ def build_matrix_from_bam(
             matrix[row, col] = score
 
     # Normalize alignment scores per-row (per-read) to [0, 1]
-    # This removes aligner-specific score scale bias: minimap2, bowtie2,
-    # and BWA all use different scoring schemes. Row-wise normalization
-    # ensures that a read's relative affinity across alleles is preserved
-    # regardless of which aligner produced the scores.
+    # Handles both positive-is-better (minimap2/BWA) and
+    # negative-is-penalty (bowtie2) scoring conventions.
+    # Transform: shift each row so min=0, then scale so max=1.
+    # A read that maps equally well to all alleles gets uniform scores;
+    # a read with strong preference gets a sharp distribution.
     if n_reads > 0:
+        row_min = matrix.min(axis=1, keepdims=True)
+        matrix = matrix - row_min  # shift: worst score -> 0
         row_max = matrix.max(axis=1, keepdims=True)
         row_max[row_max == 0] = 1.0  # avoid division by zero
-        matrix = matrix / row_max
+        matrix = matrix / row_max  # scale: best score -> 1
+
+        # For reads that only map to one allele, the shift+scale gives
+        # a clear 1.0 for that allele and 0.0 for others. For reads
+        # that map to multiple alleles, relative scores are preserved.
 
     logger.info(
         "Read-allele matrix: %d reads x %d alleles, %.1f%% non-zero (scores normalized)",

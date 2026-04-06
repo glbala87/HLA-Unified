@@ -55,6 +55,8 @@ def solve_ilp(
     solver_time_limit: int = 300,
     phasing_hint: tuple[str, str] | None = None,
     phasing_bonus: float = 0.1,
+    frequency_priors: dict[str, float] | None = None,
+    frequency_weight: float = 0.05,
 ) -> ILPResult:
     """Solve the ILP to find optimal diploid allele pair.
 
@@ -111,23 +113,32 @@ def solve_ilp(
     # y[i] = 1 if read i is explained by selected alleles
     y = [pulp.LpVariable(f"y_{i}", cat="Binary") for i in range(n_reads)]
 
+    # Compute frequency bonus per allele (favors common alleles)
+    freq_bonus = np.zeros(n_alleles)
+    if frequency_priors:
+        for j, name in enumerate(matrix.allele_names):
+            freq_bonus[j] = frequency_priors.get(name, 0.0)
+        # Scale frequency bonus relative to read evidence
+        # frequency_weight controls the tradeoff: higher = more prior influence
+        if freq_bonus.max() > 0:
+            freq_bonus = freq_bonus / freq_bonus.max()  # normalize to [0, 1]
+
     if use_weights:
-        # w[i,j] = M[i,j] * x[j] linearized via auxiliary variable
-        # s[i] = max score for read i among selected alleles
-        # Objective: maximize sum of per-read scores from selected alleles
-        #
-        # For each read i, create auxiliary vars w_ij = x_j (active if allele j selected
-        # and read i maps to it). The read's contribution is max(M[i,j] * w_ij).
-        # Linearization: s_i <= M[i,j] * x_j + BIG*(1-z_ij) for each j with M[i,j]>0
-        # This is complex, so we use a practical approximation:
+        # Objective: maximize read alignment scores + frequency prior bonus
         # score(i) = sum_j(M[i,j] * x_j) — sum of scores to selected alleles
-        # This slightly over-counts heterozygous reads but is fast and accurate.
-        prob += pulp.lpSum(
+        read_score = pulp.lpSum(
             float(M[i, j]) * x[j]
             for i in range(n_reads)
             for j in range(n_alleles)
             if M[i, j] > 0
         )
+        # Add population frequency prior: bonus for selecting common alleles
+        freq_score = pulp.lpSum(
+            float(freq_bonus[j]) * frequency_weight * n_reads * x[j]
+            for j in range(n_alleles)
+            if freq_bonus[j] > 0
+        )
+        prob += read_score + freq_score
     else:
         prob += pulp.lpSum(y[i] for i in range(n_reads))
 

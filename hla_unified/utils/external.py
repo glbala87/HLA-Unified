@@ -104,7 +104,7 @@ def run_pipeline(
     cmds: list[list[str]],
     output_path: Path | None = None,
     description: str = "",
-    timeout: int = 600,
+    timeout: int = 1800,
 ) -> None:
     """Run a pipeline of commands (cmd1 | cmd2 | ... > output).
 

@@ -1,0 +1,20 @@
+# HLA-Unified V2 typing results
+# Sample: HG02059
+# Data type: short
+Locus	Chromosome	Allele	Confidence	Strategies
+HLA-A	1	A*11:01	HIGH	kmer,assembly,refinement
+HLA-A	2	A*33:03	HIGH	kmer,assembly,refinement
+HLA-B	1	B*15:02	HIGH	kmer,assembly,refinement
+HLA-B	2	B*58:01	HIGH	kmer,assembly,refinement
+HLA-C	1	C*03:02	HIGH	kmer,assembly,refinement
+HLA-C	2	C*08:01	HIGH	kmer,assembly,refinement
+HLA-DRB1	1	DRB1*03:01	HIGH	kmer,assembly
+HLA-DRB1	2	DRB1*12:02	HIGH	kmer,assembly
+HLA-DQA1	1	DQA1*05:01	MEDIUM	kmer
+HLA-DQA1	2	DQA1*06:01	MEDIUM	kmer
+HLA-DQB1	1	DQB1*02:01	HIGH	kmer,assembly
+HLA-DQB1	2	DQB1*03:01	HIGH	kmer,assembly
+HLA-DPA1	1	DPA1*01:03	HIGH	kmer,assembly
+HLA-DPA1	2	DPA1*02:02	HIGH	kmer,assembly
+HLA-DPB1	1	DPB1*05:01	HIGH	kmer,assembly
+HLA-DPB1	2	DPB1*02:01	LOW	kmer

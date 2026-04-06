@@ -1,0 +1,17 @@
+SampleID	Locus	Allele1	Allele2	Caller	CallerVersion	Source
+NA12878	HLA-A	A*01:01	A*11:01	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-B	B*08:01	B*56:01	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-C	C*01:02	C*07:01	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-DRB1	DRB1*03:01	DRB1*01:01	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-DQA1	DQA1*05:01	DQA1*01:01	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-DQB1	DQB1*02:01	DQB1*05:01	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-DPA1	DPA1*01:03	DPA1*01:03	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+NA12878	HLA-DPB1	DPB1*04:01	DPB1*04:02	arcasHLA	0.5.0	Orenbuch_2020_Bioinformatics
+HG002	HLA-A	A*01:01	A*26:01	arcasHLA	0.5.0	benchmark_run
+HG002	HLA-B	B*08:01	B*38:01	arcasHLA	0.5.0	benchmark_run
+HG002	HLA-C	C*07:01	C*12:03	arcasHLA	0.5.0	benchmark_run
+HG002	HLA-DRB1	DRB1*03:01	DRB1*11:01	arcasHLA	0.5.0	benchmark_run
+NA19240	HLA-A	A*23:01	A*30:02	arcasHLA	0.5.0	benchmark_run
+NA19240	HLA-B	B*15:10	B*53:01	arcasHLA	0.5.0	benchmark_run
+NA19240	HLA-C	C*03:04	C*04:01	arcasHLA	0.5.0	benchmark_run
+NA19240	HLA-DRB1	DRB1*08:04	DRB1*13:02	arcasHLA	0.5.0	benchmark_run

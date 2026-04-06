@@ -1,0 +1,57 @@
+name: Real-Data Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: "Comma-separated sample IDs (default: NA12878)"
+        default: "NA12878"
+        type: string
+      region_only:
+        description: "Extract MHC region only (faster, ~100MB per sample)"
+        default: true
+        type: boolean
+  schedule:
+    # Run weekly on Sunday at 02:00 UTC
+    - cron: "0 2 * * 0"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            samtools minimap2 bowtie2
+
+      - name: Install HLA-Unified
+        run: pip install -e ".[dev,benchmark]"
+
+      - name: Download IMGT/HLA database
+        run: python -m hla_unified setup-db --release 3.56.0
+
+      - name: Run real-data validation
+        run: |
+          python validation/real_data/run_real_validation.py \
+            --samples ${{ inputs.samples || 'NA12878' }} \
+            --imgt-db IMGTHLA \
+            --out validation/real_data/results \
+            --threads 4 \
+            ${{ inputs.region_only && '--region-only' || '' }}
+
+      - name: Upload validation results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-results
+          path: validation/real_data/results/
+          retention-days: 90

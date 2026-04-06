@@ -1,0 +1,248 @@
+{
+  "sample_id": "NA12878",
+  "callers": [
+    "arcas_hla",
+    "hla_la",
+    "hla_unified",
+    "optitype",
+    "xhla"
+  ],
+  "resolution": 2,
+  "overall_concordance": 1.0,
+  "fully_concordant_loci": 8,
+  "discordant_loci": 0,
+  "per_locus": {
+    "A": {
+      "locus": "A",
+      "consensus": [
+        "A*01:01",
+        "A*11:01"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 5,
+      "n_total": 5,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "A*01:01",
+          "A*11:01"
+        ],
+        "hla_la": [
+          "A*01:01",
+          "A*11:01"
+        ],
+        "hla_unified": [
+          "A*01:01",
+          "A*11:01"
+        ],
+        "optitype": [
+          "A*01:01",
+          "A*11:01"
+        ],
+        "xhla": [
+          "A*01:01",
+          "A*11:01"
+        ]
+      }
+    },
+    "B": {
+      "locus": "B",
+      "consensus": [
+        "B*08:01",
+        "B*56:01"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 5,
+      "n_total": 5,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "B*08:01",
+          "B*56:01"
+        ],
+        "hla_la": [
+          "B*08:01",
+          "B*56:01"
+        ],
+        "hla_unified": [
+          "B*08:01",
+          "B*56:01"
+        ],
+        "optitype": [
+          "B*08:01",
+          "B*56:01"
+        ],
+        "xhla": [
+          "B*08:01",
+          "B*56:01"
+        ]
+      }
+    },
+    "C": {
+      "locus": "C",
+      "consensus": [
+        "C*01:02",
+        "C*07:01"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 5,
+      "n_total": 5,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "C*01:02",
+          "C*07:01"
+        ],
+        "hla_la": [
+          "C*01:02",
+          "C*07:01"
+        ],
+        "hla_unified": [
+          "C*01:02",
+          "C*07:01"
+        ],
+        "optitype": [
+          "C*01:02",
+          "C*07:01"
+        ],
+        "xhla": [
+          "C*01:02",
+          "C*07:01"
+        ]
+      }
+    },
+    "DPA1": {
+      "locus": "DPA1",
+      "consensus": [
+        "DPA1*01:03",
+        "DPA1*01:03"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 3,
+      "n_total": 3,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "DPA1*01:03",
+          "DPA1*01:03"
+        ],
+        "hla_la": [
+          "DPA1*01:03",
+          "DPA1*01:03"
+        ],
+        "hla_unified": [
+          "DPA1*01:03",
+          "DPA1*01:03"
+        ]
+      }
+    },
+    "DPB1": {
+      "locus": "DPB1",
+      "consensus": [
+        "DPB1*04:01",
+        "DPB1*04:02"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 3,
+      "n_total": 3,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "DPB1*04:01",
+          "DPB1*04:02"
+        ],
+        "hla_la": [
+          "DPB1*04:01",
+          "DPB1*04:02"
+        ],
+        "hla_unified": [
+          "DPB1*04:01",
+          "DPB1*04:02"
+        ]
+      }
+    },
+    "DQA1": {
+      "locus": "DQA1",
+      "consensus": [
+        "DQA1*01:01",
+        "DQA1*05:01"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 3,
+      "n_total": 3,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "DQA1*05:01",
+          "DQA1*01:01"
+        ],
+        "hla_la": [
+          "DQA1*05:01",
+          "DQA1*01:01"
+        ],
+        "hla_unified": [
+          "DQA1*05:01",
+          "DQA1*01:01"
+        ]
+      }
+    },
+    "DQB1": {
+      "locus": "DQB1",
+      "consensus": [
+        "DQB1*02:01",
+        "DQB1*05:01"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 4,
+      "n_total": 4,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "DQB1*02:01",
+          "DQB1*05:01"
+        ],
+        "hla_la": [
+          "DQB1*02:01",
+          "DQB1*05:01"
+        ],
+        "hla_unified": [
+          "DQB1*02:01",
+          "DQB1*05:01"
+        ],
+        "xhla": [
+          "DQB1*02:01",
+          "DQB1*05:01"
+        ]
+      }
+    },
+    "DRB1": {
+      "locus": "DRB1",
+      "consensus": [
+        "DRB1*01:01",
+        "DRB1*03:01"
+      ],
+      "concordance_rate": 1.0,
+      "n_agree": 4,
+      "n_total": 4,
+      "is_concordant": true,
+      "per_caller": {
+        "arcas_hla": [
+          "DRB1*03:01",
+          "DRB1*01:01"
+        ],
+        "hla_la": [
+          "DRB1*03:01",
+          "DRB1*01:01"
+        ],
+        "hla_unified": [
+          "DRB1*03:01",
+          "DRB1*01:01"
+        ],
+        "xhla": [
+          "DRB1*03:01",
+          "DRB1*01:01"
+        ]
+      }
+    }
+  }
+}
