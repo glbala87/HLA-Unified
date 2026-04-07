@@ -61,11 +61,17 @@ def cli():
               help="Generate clinical summary report")
 @click.option("--strict-reproducibility", is_flag=True,
               help="Write IMGT lockfile + manifest for full reproducibility")
+@click.option("--engine",
+              type=click.Choice(["alignment", "kmer", "hybrid"]),
+              default="hybrid",
+              help="Genotyping engine: 'alignment' (legacy ILP), 'kmer' "
+                   "(alignment-free, recommended), 'hybrid' (both, k-mer "
+                   "tiebreaker on disagreement)")
 @click.option("-v", "--verbose", count=True, help="Increase verbosity (-v, -vv)")
 def type(bam, r1, r2, imgt_db, out, threads, reference, loci,
          skip_refinement, skip_confidence, skip_kmer, skip_assembly,
          max_candidates, data_type, output_resolution, imgt_release,
-         profile, clinical, strict_reproducibility, verbose):
+         profile, clinical, strict_reproducibility, engine, verbose):
     """Run HLA typing on BAM or FASTQ input.
 
     Phases:
@@ -120,6 +126,7 @@ def type(bam, r1, r2, imgt_db, out, threads, reference, loci,
         skip_confidence=config.skip_confidence,
         skip_kmer=config.skip_kmer,
         skip_assembly=config.skip_assembly,
+        engine=engine,
     )
 
     if bam:
@@ -417,6 +424,94 @@ def benchmark(dataset, bam_dir, imgt_db, out, threads, data_type,
     click.echo(f"\nPer-locus:")
     for locus, acc in sorted(report.per_locus.items()):
         click.echo(f"  HLA-{locus}: {acc.accuracy:.1%} ({acc.n_samples} samples)")
+
+
+@cli.command("orchestrate")
+@click.option("--bam", type=click.Path(exists=True), help="Input BAM/CRAM")
+@click.option("--r1", type=click.Path(exists=True), help="Input R1 FASTQ")
+@click.option("--r2", type=click.Path(exists=True), help="Input R2 FASTQ")
+@click.option("--out", "-o", required=True, type=click.Path(),
+              help="Output directory")
+@click.option("--sample-id", default="sample", help="Sample ID")
+@click.option("--threads", "-t", default=4, help="Threads per caller")
+@click.option("--callers", default=None,
+              help="Comma-separated callers: optitype,hlala,t1k,arcashla")
+@click.option("--graph-dir", default=None,
+              help="HLA*LA graph directory (e.g., PRG_MHC_GRCh38_withIMGT)")
+@click.option("--list-only", is_flag=True,
+              help="Only list which callers are available, don't run")
+@click.option("--no-parallel", is_flag=True,
+              help="Run callers sequentially instead of in parallel")
+def orchestrate(bam, r1, r2, out, sample_id, threads, callers, graph_dir,
+                list_only, no_parallel):
+    """Run multiple external HLA callers and merge results into consensus.
+
+    Wraps OptiType, HLA*LA, T1K, and arcasHLA. Uses HLA-Unified's
+    infrastructure (validation, ambiguity, reporting) over proven
+    third-party callers. Each caller is run only if installed.
+    """
+    setup_logging(2)
+    import json
+    from pathlib import Path
+    from .external_callers import MultiCallerOrchestrator
+
+    out_dir = Path(out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    caller_list = [c.strip() for c in callers.split(",")] if callers else None
+
+    orch = MultiCallerOrchestrator(
+        work_dir=out_dir,
+        threads=threads,
+        callers=caller_list,
+        graph_dir=graph_dir,
+    )
+
+    available = orch.list_available()
+    click.echo("\nExternal callers:")
+    for name, ok in sorted(available.items()):
+        marker = "[OK]" if ok else "[--]"
+        click.echo(f"  {marker} {name}")
+
+    if list_only:
+        return
+
+    if not bam and not r1:
+        click.echo("\nError: --bam or --r1 required", err=True)
+        return 1
+
+    if not any(available.values()):
+        click.echo("\nNo callers available. Install at least one of: "
+                    "OptiType, HLA*LA, T1K, arcasHLA", err=True)
+        return 1
+
+    click.echo(f"\nRunning available callers on {sample_id}...")
+    result = orch.run(
+        bam_path=bam, r1_fastq=r1, r2_fastq=r2,
+        sample_id=sample_id, parallel=not no_parallel,
+    )
+
+    # Write result JSON
+    result_path = out_dir / f"{sample_id}_orchestration.json"
+    result_path.write_text(json.dumps(result.to_dict(), indent=2))
+
+    # Print consensus calls
+    click.echo(f"\n=== Consensus calls ({len(result.consensus)} loci) ===")
+    click.echo(f"Callers run: {', '.join(result.callers_succeeded)}")
+    click.echo(f"Total runtime: {result.total_runtime_seconds:.0f}s\n")
+
+    click.echo(f"  {'Locus':<10} {'Allele 1':<20} {'Allele 2':<20} "
+                f"{'Conf':<8} {'Agreement':<12}")
+    click.echo(f"  {'─'*10} {'─'*20} {'─'*20} {'─'*8} {'─'*12}")
+    for locus in sorted(result.consensus):
+        c = result.consensus[locus]
+        agreement = f"{c.n_callers_agreeing}/{c.n_callers_total}"
+        click.echo(
+            f"  HLA-{locus:<6} {c.allele1:<20} {c.allele2:<20} "
+            f"{c.confidence:<8} {agreement:<12}"
+        )
+
+    click.echo(f"\nFull report: {result_path}")
 
 
 if __name__ == "__main__":

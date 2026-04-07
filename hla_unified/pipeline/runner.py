@@ -139,6 +139,8 @@ class UnifiedPipeline:
         max_refined_candidates: int = 20,
         confidence_threshold: float = 0.90,
         assembly_confidence_trigger: float = 0.80,
+        # Genotyping engine: "alignment" (legacy ILP), "kmer", or "hybrid"
+        engine: str = "hybrid",
     ) -> None:
         self.imgt_db = IMGTDatabase(imgt_db_path)
         self.work_dir = Path(work_dir)
@@ -155,6 +157,7 @@ class UnifiedPipeline:
         self.max_refined_candidates = max_refined_candidates
         self.confidence_threshold = confidence_threshold
         self.assembly_trigger = assembly_confidence_trigger
+        self.engine = engine
 
     def run(
         self,
@@ -247,10 +250,15 @@ class UnifiedPipeline:
         # genomic sequences so refinement/ILP can use either.
         all_candidates: dict[str, list[str]] = {}
         all_sequences: dict[str, str] = {}
+        # Preserve the original prefilter candidates (before refinement
+        # narrows them) for use by the k-mer genotyping engine, which
+        # benefits from a broader candidate pool.
+        prefilter_candidates: dict[str, list[str]] = {}
         for locus in self.loci:
             pf = pf_results.per_locus.get(locus)
             if pf and pf.candidate_alleles:
                 all_candidates[locus] = pf.candidate_alleles
+                prefilter_candidates[locus] = list(pf.candidate_alleles)
                 # Load CDS first (preferred for refinement — smaller, faster)
                 seqs = self.imgt_db.load_cds(locus)
                 # Also load genomic for alleles not in CDS
@@ -261,6 +269,7 @@ class UnifiedPipeline:
                 all_sequences.update(seqs)
             else:
                 all_candidates[locus] = []
+                prefilter_candidates[locus] = []
 
         # === Phase 2: Iterative Refinement ===
         if not self.skip_refinement:
@@ -378,6 +387,91 @@ class UnifiedPipeline:
                         solver_status="cnv_hemizygous",
                     )
         phases_completed.append("ilp_genotyping")
+
+        # === Phase 3.5: K-mer Genotyping (alignment-free) ===
+        # Run alignment-free k-mer genotyper as a more discriminating
+        # alternative/complement to ILP. K-mer scoring is robust against
+        # alignment noise and aligner-specific score conventions.
+        # Uses PREFILTER candidates (broader set, before refinement narrows)
+        # because k-mer matching needs a wide pool to pick the best pair.
+        kmer_genotype_results: dict = {}
+        if self.engine in ("kmer", "hybrid"):
+            from ..genotyper.kmer_genotyper import kmer_genotype_all_loci
+            try:
+                kmer_genotype_results = kmer_genotype_all_loci(
+                    fastq_paths=[hla_r1] + ([hla_r2] if hla_r2 else []),
+                    imgt_db=self.imgt_db,
+                    loci=self.loci,
+                    k=21,
+                    max_reads=500_000,
+                    candidates_per_locus=prefilter_candidates,
+                )
+                phases_completed.append("kmer_genotyping")
+            except Exception as e:
+                logger.warning("K-mer genotyping failed: %s", e)
+
+        # Engine selection: replace ILP results with k-mer results if requested
+        if self.engine == "kmer" and kmer_genotype_results:
+            logger.info("Using k-mer engine results (alignment-free)")
+            for locus, kmer_res in kmer_genotype_results.items():
+                if kmer_res.allele1:
+                    ilp_results[locus] = ILPResult(
+                        locus=locus,
+                        allele1=kmer_res.allele1,
+                        allele2=kmer_res.allele2,
+                        reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
+                        total_reads=kmer_res.n_alleles_evaluated,
+                        objective_value=kmer_res.score,
+                        is_homozygous=kmer_res.is_homozygous,
+                        solver_status="kmer_engine",
+                    )
+        elif self.engine == "hybrid" and kmer_genotype_results:
+            # Hybrid: use k-mer when ILP and k-mer disagree at 2-field level
+            from ..reference.loci import truncate_to_resolution
+            for locus, kmer_res in kmer_genotype_results.items():
+                if not kmer_res.allele1:
+                    continue
+                ilp_res = ilp_results.get(locus)
+                if not ilp_res or not ilp_res.allele1:
+                    # No ILP call — use k-mer
+                    ilp_results[locus] = ILPResult(
+                        locus=locus,
+                        allele1=kmer_res.allele1,
+                        allele2=kmer_res.allele2,
+                        reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
+                        total_reads=kmer_res.n_alleles_evaluated,
+                        objective_value=kmer_res.score,
+                        is_homozygous=kmer_res.is_homozygous,
+                        solver_status="kmer_fallback",
+                    )
+                    continue
+
+                # Compare at 2-field
+                ilp_pair = tuple(sorted([
+                    truncate_to_resolution(ilp_res.allele1, 2).removeprefix("HLA-"),
+                    truncate_to_resolution(ilp_res.allele2, 2).removeprefix("HLA-"),
+                ]))
+                kmer_pair = tuple(sorted([
+                    truncate_to_resolution(kmer_res.allele1, 2).removeprefix("HLA-"),
+                    truncate_to_resolution(kmer_res.allele2, 2).removeprefix("HLA-"),
+                ]))
+
+                if ilp_pair != kmer_pair:
+                    # Disagreement — prefer k-mer (more discriminating)
+                    logger.info(
+                        "  %s: ILP=%s vs kmer=%s — using k-mer",
+                        locus, ilp_pair, kmer_pair,
+                    )
+                    ilp_results[locus] = ILPResult(
+                        locus=locus,
+                        allele1=kmer_res.allele1,
+                        allele2=kmer_res.allele2,
+                        reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
+                        total_reads=kmer_res.n_alleles_evaluated,
+                        objective_value=kmer_res.score,
+                        is_homozygous=kmer_res.is_homozygous,
+                        solver_status="hybrid_kmer_override",
+                    )
 
         # === Phase 4: Bayesian Confidence (parallelized) ===
         vb_results: dict[str, ConfidenceResult] = {}
@@ -774,9 +868,21 @@ class UnifiedPipeline:
                 )
                 continue
 
-            # Prefer VB alleles if available
-            a1 = vb_r.allele1 if vb_r else ilp_r.allele1
-            a2 = vb_r.allele2 if vb_r else ilp_r.allele2
+            # Allele selection priority:
+            # 1. If k-mer engine was used (kmer or hybrid_kmer_override
+            #    solver_status), use ILP results (which contain the k-mer
+            #    override result)
+            # 2. Otherwise prefer VB alleles if available
+            # 3. Fall back to ILP
+            is_kmer_result = ilp_r.solver_status in (
+                "kmer_engine", "kmer_fallback", "hybrid_kmer_override",
+            )
+            if is_kmer_result:
+                a1 = ilp_r.allele1
+                a2 = ilp_r.allele2
+            else:
+                a1 = vb_r.allele1 if vb_r else ilp_r.allele1
+                a2 = vb_r.allele2 if vb_r else ilp_r.allele2
 
             # === Resolution control ===
             if self.output_resolution == "G":
