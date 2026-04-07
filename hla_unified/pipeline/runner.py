@@ -426,52 +426,39 @@ class UnifiedPipeline:
                         solver_status="kmer_engine",
                     )
         elif self.engine == "hybrid" and kmer_genotype_results:
-            # Hybrid: use k-mer when ILP and k-mer disagree at 2-field level
+            # Hybrid: ALWAYS use k-mer results when k-mer produced something.
+            # The k-mer engine is more accurate than alignment-based ILP for
+            # HLA typing; we keep the alignment pipeline for QC and read
+            # statistics, but the calls themselves come from k-mer.
             from ..reference.loci import truncate_to_resolution
             for locus, kmer_res in kmer_genotype_results.items():
                 if not kmer_res.allele1:
                     continue
                 ilp_res = ilp_results.get(locus)
-                if not ilp_res or not ilp_res.allele1:
-                    # No ILP call — use k-mer
-                    ilp_results[locus] = ILPResult(
-                        locus=locus,
-                        allele1=kmer_res.allele1,
-                        allele2=kmer_res.allele2,
-                        reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
-                        total_reads=kmer_res.n_alleles_evaluated,
-                        objective_value=kmer_res.score,
-                        is_homozygous=kmer_res.is_homozygous,
-                        solver_status="kmer_fallback",
+                ilp_pair_str = ""
+                if ilp_res and ilp_res.allele1:
+                    ilp_pair_str = (
+                        f"({truncate_to_resolution(ilp_res.allele1, 2).removeprefix('HLA-')}, "
+                        f"{truncate_to_resolution(ilp_res.allele2, 2).removeprefix('HLA-')})"
                     )
-                    continue
-
-                # Compare at 2-field
-                ilp_pair = tuple(sorted([
-                    truncate_to_resolution(ilp_res.allele1, 2).removeprefix("HLA-"),
-                    truncate_to_resolution(ilp_res.allele2, 2).removeprefix("HLA-"),
-                ]))
-                kmer_pair = tuple(sorted([
-                    truncate_to_resolution(kmer_res.allele1, 2).removeprefix("HLA-"),
-                    truncate_to_resolution(kmer_res.allele2, 2).removeprefix("HLA-"),
-                ]))
-
-                if ilp_pair != kmer_pair:
-                    # Disagreement — prefer k-mer (more discriminating)
-                    logger.info(
-                        "  %s: ILP=%s vs kmer=%s — using k-mer",
-                        locus, ilp_pair, kmer_pair,
-                    )
-                    ilp_results[locus] = ILPResult(
-                        locus=locus,
-                        allele1=kmer_res.allele1,
-                        allele2=kmer_res.allele2,
-                        reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
-                        total_reads=kmer_res.n_alleles_evaluated,
-                        objective_value=kmer_res.score,
-                        is_homozygous=kmer_res.is_homozygous,
-                        solver_status="hybrid_kmer_override",
-                    )
+                kmer_pair_str = (
+                    f"({truncate_to_resolution(kmer_res.allele1, 2).removeprefix('HLA-')}, "
+                    f"{truncate_to_resolution(kmer_res.allele2, 2).removeprefix('HLA-')})"
+                )
+                logger.info(
+                    "  %s: ILP=%s, kmer=%s — using k-mer",
+                    locus, ilp_pair_str or "(none)", kmer_pair_str,
+                )
+                ilp_results[locus] = ILPResult(
+                    locus=locus,
+                    allele1=kmer_res.allele1,
+                    allele2=kmer_res.allele2,
+                    reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
+                    total_reads=kmer_res.n_alleles_evaluated,
+                    objective_value=kmer_res.score,
+                    is_homozygous=kmer_res.is_homozygous,
+                    solver_status="hybrid_kmer_override",
+                )
 
         # === Phase 4: Bayesian Confidence (parallelized) ===
         vb_results: dict[str, ConfidenceResult] = {}

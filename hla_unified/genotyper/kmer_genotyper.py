@@ -66,7 +66,7 @@ class KmerGenotyper:
     def __init__(
         self,
         k: int = 21,
-        frequency_weight: float = 0.01,  # tiny — used only as tiebreaker
+        frequency_weight: float = 0.10,  # moderate tiebreaker
         min_kmer_support: int = 3,
     ) -> None:
         self.k = k
@@ -177,11 +177,10 @@ class KmerGenotyper:
                 n_alleles_evaluated=0,
             )
 
-        # Find best diploid pair: maximize k-mer evidence with a small
-        # frequency tiebreaker. Selection is primarily driven by reads.
+        # Find best diploid pair: maximize coverage with frequency prior.
         max_score = max(allele_scores.get(a, 0) for a in valid_alleles)
 
-        # Pick top candidates by raw read score (no frequency bias here)
+        # Pick top candidates by raw read score
         top_alleles = sorted(
             valid_alleles, key=lambda a: -allele_scores[a],
         )[:30]
@@ -192,13 +191,19 @@ class KmerGenotyper:
         for i, a1 in enumerate(top_alleles):
             for j in range(i, len(top_alleles)):  # i to allow homozygous
                 a2 = top_alleles[j]
-                pair_score = self._score_diploid_pair(
+                coverage_score = self._score_diploid_pair(
                     a1, a2, allele_kmers, read_kmers, kmer_weights,
                 )
-                # Tiny frequency tiebreaker (under 1% of pair score)
+                # Frequency prior: use average frequency, not sum. This
+                # avoids biasing homozygous pairs (where the same frequency
+                # is counted twice). A heterozygous pair of two common
+                # alleles gets the same boost as a homozygous pair of one.
                 f1 = self.freq_db.get_frequency(a1)
                 f2 = self.freq_db.get_frequency(a2)
-                pair_score += (f1 + f2) * max_score * self.frequency_weight
+                avg_freq = (f1 + f2) / 2
+                freq_boost = 1.0 + avg_freq * self.frequency_weight * 10
+
+                pair_score = coverage_score * freq_boost
 
                 if pair_score > best_pair_score:
                     best_pair_score = pair_score
@@ -237,37 +242,49 @@ class KmerGenotyper:
         read_kmers: set[str],
         kmer_weights: dict[str, float],
     ) -> float:
-        """Score a diploid pair requiring BOTH alleles to be well-supported.
+        """Score a diploid pair by coverage, with a modest union bonus
+        for heterozygous pairs that genuinely expand the covered k-mer set.
 
-        Uses two metrics combined:
-        1. Union coverage: total k-mers from (a1 ∪ a2) found in reads
-        2. Min individual coverage: requires both alleles to have high
-           individual coverage (geometric mean), so we don't pick a pair
-           where one allele is well-supported and the other is noise.
+        For homozygous pair (a1, a1): score = individual_coverage
+        For het pair (a1, a2): score = geo_coverage + union_boost
+            where union_boost = (union_count - max(n1_found, n2_found)) / max(n1, n2)
+            This is only positive if the second allele contributes
+            k-mers beyond what the first already covers.
         """
         k1 = allele_kmers[a1]
         k2 = allele_kmers[a2]
 
-        # Individual coverage fractions
         n1 = len(k1)
         n2 = len(k2)
         if n1 == 0 or n2 == 0:
             return 0.0
 
-        c1 = sum(1 for km in k1 if km in read_kmers) / n1
-        c2 = sum(1 for km in k2 if km in read_kmers) / n2
+        n1_found = sum(1 for km in k1 if km in read_kmers)
+        n2_found = sum(1 for km in k2 if km in read_kmers)
+        c1 = n1_found / n1
+        c2 = n2_found / n2
 
-        # Geometric mean of coverage — both alleles must be well-supported
         geo_coverage = math.sqrt(c1 * c2)
 
-        # Union of k-mers explained
-        union = k1 | k2
-        union_count = sum(1 for km in union if km in read_kmers)
+        if a1 == a2:
+            # Homozygous pair — no union bonus
+            return geo_coverage
 
-        # Combined score: union count weighted by geometric coverage.
-        # This favors pairs where both alleles are highly supported,
-        # not pairs where one allele has 95% coverage and the other 30%.
-        return union_count * (0.5 + geo_coverage)
+        # Heterozygous — measure how much the union expands coverage
+        # beyond the single better allele
+        union = k1 | k2
+        union_found = sum(1 for km in union if km in read_kmers)
+        max_single_found = max(n1_found, n2_found)
+
+        # If union adds k-mers that are ALSO found in reads, it's a real
+        # heterozygous pair. If the union adds k-mers NOT in reads, they
+        # don't count (union_found would equal max_single_found).
+        union_expansion = union_found - max_single_found
+        max_n = max(n1, n2)
+        union_bonus = union_expansion / max_n if max_n > 0 else 0.0
+
+        # Modest bonus for genuine het pairs (up to ~10% additional score)
+        return geo_coverage + 0.15 * union_bonus
 
 
 def extract_read_kmers(
