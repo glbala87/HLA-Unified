@@ -334,6 +334,180 @@ def extract_read_kmers(
     return kmers
 
 
+def extract_read_kmer_counts(
+    fastq_paths: list[Path],
+    k: int = 21,
+    target_kmers: set[str] | None = None,
+    max_reads: int | None = None,
+) -> dict[str, int]:
+    """Extract k-mer counts (depth) from FASTQ files.
+
+    Counts occurrences of each canonical k-mer. If target_kmers is
+    provided, only count k-mers in that set (memory optimization for
+    depth-based disambiguation of specific allele pairs).
+
+    Used for depth-based heterozygous vs homozygous disambiguation:
+    true heterozygous calls have ~1x depth at distinguishing positions
+    while homozygous has ~2x depth at those same positions.
+    """
+    import gzip
+    from collections import Counter
+
+    counts: Counter = Counter()
+    n_reads = 0
+
+    for fq_path in fastq_paths:
+        if not fq_path.exists():
+            continue
+
+        opener = gzip.open if str(fq_path).endswith(".gz") else open
+        with opener(fq_path, "rt") as fh:
+            line_no = 0
+            for line in fh:
+                line_no += 1
+                if line_no % 4 == 2:
+                    seq = line.strip().upper()
+                    if "N" in seq:
+                        for sub in seq.split("N"):
+                            if len(sub) >= k:
+                                for i in range(len(sub) - k + 1):
+                                    km = canonical_kmer(sub[i:i + k])
+                                    if target_kmers is None or km in target_kmers:
+                                        counts[km] += 1
+                    else:
+                        for i in range(len(seq) - k + 1):
+                            km = canonical_kmer(seq[i:i + k])
+                            if target_kmers is None or km in target_kmers:
+                                counts[km] += 1
+                    n_reads += 1
+                    if max_reads and n_reads >= max_reads:
+                        return dict(counts)
+
+    return dict(counts)
+
+
+def disambiguate_close_pair(
+    locus: str,
+    a1: str,
+    a2: str,
+    allele_sequences: dict[str, str],
+    candidate_alleles: list[str],
+    fastq_paths: list[Path],
+    k: int = 21,
+    max_reads: int = 500_000,
+) -> tuple[str, str]:
+    """Depth-based disambiguation for close allele pairs.
+
+    When the k-mer genotyper picks a homozygous call (a1, a1) but reads
+    may actually support a heterozygous pair (a1, a2') within the same
+    2-field group, this uses k-mer DEPTH to decide.
+
+    Strategy:
+    1. Consider all 2-field groups in the same 2-digit group as a1
+    2. For each candidate het pair (a1, candidate_a2), find k-mers
+       unique to candidate_a2 (not shared with a1)
+    3. Measure the DEPTH of those unique k-mers in reads
+    4. If a candidate_a2 has unique k-mers with depth ~= depth of shared
+       k-mers / 2, that's a real heterozygous pair (both alleles at 1x)
+    5. If no candidate has unique k-mer depth significantly above noise,
+       the call is genuinely homozygous
+
+    Returns: (a1, final_a2) — either the original (a1, a1) if truly homo,
+    or (a1, better_a2) if depth evidence supports heterozygous.
+    """
+    from ..reference.loci import parse_allele_name, truncate_to_resolution
+
+    if a1 != a2:
+        # Already heterozygous, no disambiguation needed
+        return (a1, a2)
+
+    info = parse_allele_name(a1)
+    a1_2digit = info.field1
+
+    # Find candidates in the same 2-digit group (e.g., all DPB1*04:xx)
+    same_2digit_candidates: list[str] = []
+    for cand in candidate_alleles:
+        if cand == a1:
+            continue
+        cand_info = parse_allele_name(cand)
+        if cand_info.locus == info.locus and cand_info.field1 == a1_2digit:
+            same_2digit_candidates.append(cand)
+
+    if not same_2digit_candidates:
+        return (a1, a1)
+
+    # Get a1 k-mers and baseline depth
+    a1_kmers = extract_canonical_kmers(allele_sequences[a1], k)
+
+    # Collect all distinguishing k-mers across candidate alternatives
+    distinguishing_kmers_by_cand: dict[str, set[str]] = {}
+    all_distinguishing: set[str] = set()
+    for cand in same_2digit_candidates:
+        if cand not in allele_sequences:
+            continue
+        cand_kmers = extract_canonical_kmers(allele_sequences[cand], k)
+        unique_to_cand = cand_kmers - a1_kmers
+        if len(unique_to_cand) >= 3:  # need at least 3 distinguishing k-mers
+            distinguishing_kmers_by_cand[cand] = unique_to_cand
+            all_distinguishing |= unique_to_cand
+
+    if not distinguishing_kmers_by_cand:
+        return (a1, a1)
+
+    # Get depth of a1 shared k-mers (baseline) + distinguishing k-mers
+    target_kmers = a1_kmers | all_distinguishing
+    kmer_counts = extract_read_kmer_counts(
+        fastq_paths, k=k, target_kmers=target_kmers, max_reads=max_reads,
+    )
+
+    # Baseline depth from a1 k-mers (median of those with any coverage)
+    a1_depths = [kmer_counts.get(km, 0) for km in a1_kmers]
+    a1_depths_covered = sorted([d for d in a1_depths if d > 0])
+    if not a1_depths_covered:
+        return (a1, a1)
+
+    median_a1_depth = a1_depths_covered[len(a1_depths_covered) // 2]
+
+    # For each candidate, check if its distinguishing k-mers have depth
+    # consistent with a heterozygous pair (~50% of a1 depth)
+    best_cand = None
+    best_score = 0.0
+    for cand, unique_kmers in distinguishing_kmers_by_cand.items():
+        depths = [kmer_counts.get(km, 0) for km in unique_kmers]
+        depths_covered = [d for d in depths if d > 0]
+        if len(depths_covered) < max(3, len(unique_kmers) * 0.5):
+            continue  # need most unique k-mers to have coverage
+
+        median_cand_depth = sorted(depths_covered)[len(depths_covered) // 2]
+
+        # Ratio of candidate depth to half a1 depth
+        # If heterozygous (a1, cand): cand_depth ≈ a1_depth / 2
+        # If homozygous a1: cand depth should be very low (noise)
+        expected_het_depth = median_a1_depth / 2
+        if expected_het_depth == 0:
+            continue
+
+        ratio = median_cand_depth / expected_het_depth
+        # Accept if ratio is in [0.5, 2.0] — within 2x of expected het depth
+        if 0.5 <= ratio <= 2.0:
+            # Score: fraction of unique k-mers covered * depth match quality
+            coverage_frac = len(depths_covered) / len(unique_kmers)
+            depth_match = 1.0 - abs(1.0 - ratio)  # 1.0 when ratio=1
+            score = coverage_frac * depth_match
+            if score > best_score:
+                best_score = score
+                best_cand = cand
+
+    if best_cand and best_score >= 0.5:
+        logger.info(
+            "  %s: depth-based disambiguation: (%s, %s) -> (%s, %s) score=%.2f",
+            locus, a1, a1, a1, best_cand, best_score,
+        )
+        return (a1, best_cand)
+
+    return (a1, a1)
+
+
 def kmer_genotype_all_loci(
     fastq_paths: list[Path],
     imgt_db,  # IMGTDatabase
@@ -392,6 +566,27 @@ def kmer_genotype_all_loci(
             read_kmers=read_kmers,
             candidate_alleles=candidates,
         )
+
+        # Depth-based disambiguation for homozygous calls.
+        # When initial k-mer scoring picks (a1, a1), check if reads
+        # actually support a heterozygous pair (a1, a2') within the
+        # same 2-digit group, using k-mer depth at distinguishing positions.
+        if (result.allele1 and result.is_homozygous and candidates):
+            disambig_result = disambiguate_close_pair(
+                locus=locus,
+                a1=result.allele1,
+                a2=result.allele2,
+                allele_sequences=cds,
+                candidate_alleles=candidates,
+                fastq_paths=fastq_paths,
+                k=k,
+                max_reads=max_reads,
+            )
+            if disambig_result[1] != result.allele2:
+                # Update result with disambiguated call
+                result.allele2 = disambig_result[1]
+                result.is_homozygous = False
+
         results[locus] = result
         logger.info(
             "  %s: %s / %s (score=%.1f, conf=%.2f, n_alleles=%d)",
