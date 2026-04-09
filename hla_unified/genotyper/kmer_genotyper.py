@@ -567,25 +567,40 @@ def kmer_genotype_all_loci(
             candidate_alleles=candidates,
         )
 
-        # Depth-based disambiguation for homozygous calls.
-        # When initial k-mer scoring picks (a1, a1), check if reads
-        # actually support a heterozygous pair (a1, a2') within the
-        # same 2-digit group, using k-mer depth at distinguishing positions.
-        if (result.allele1 and result.is_homozygous and candidates):
+        # Depth-based disambiguation for effectively-homozygous calls.
+        # Triggered when either:
+        # (a) result.is_homozygous is True (same 4-field allele twice), OR
+        # (b) both alleles truncate to the same 2-field group (fake-het
+        #     between close subtypes like DPB1*04:01:01:09 + DPB1*04:01:104)
+        effectively_homo = False
+        if result.allele1:
+            if result.is_homozygous:
+                effectively_homo = True
+            else:
+                a1_2field = truncate_to_resolution(result.allele1, 2)
+                a2_2field = truncate_to_resolution(result.allele2, 2)
+                if a1_2field == a2_2field:
+                    effectively_homo = True
+
+        if effectively_homo and candidates:
             disambig_result = disambiguate_close_pair(
                 locus=locus,
                 a1=result.allele1,
-                a2=result.allele2,
+                a2=result.allele1,  # use a1 for both since effectively-homo
                 allele_sequences=cds,
                 candidate_alleles=candidates,
                 fastq_paths=fastq_paths,
                 k=k,
                 max_reads=max_reads,
             )
-            if disambig_result[1] != result.allele2:
-                # Update result with disambiguated call
+            if disambig_result[1] != result.allele1:
+                # Disambiguation found a het partner
                 result.allele2 = disambig_result[1]
                 result.is_homozygous = False
+            else:
+                # No het partner found — ensure we report as homozygous
+                result.allele2 = result.allele1
+                result.is_homozygous = True
 
         results[locus] = result
         logger.info(
