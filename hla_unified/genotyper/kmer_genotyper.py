@@ -547,7 +547,7 @@ def kmer_genotype_all_loci(
 
     for locus in loci:
         logger.info("K-mer genotyping locus %s...", locus)
-        # Load CDS sequences (smaller, faster than genomic for k-mer index)
+        # Load CDS sequences for k-mer analysis
         cds = imgt_db.load_cds(locus)
         if not cds:
             cds = imgt_db.load_genomic(locus)
