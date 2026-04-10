@@ -251,52 +251,40 @@ class FastPrefilter:
             # e.g. A*01:01:01:01 + A*01:01:01:02N + ... → A*01:01 group
             groups_2d = group_alleles_by_resolution(list(counts.keys()), level=2)
 
-            # CRITICAL: Filter to only 2-field groups present in the
-            # population frequency database. Rare/exotic alleles (e.g.,
-            # B*55:111, A*11:335) often have anomalously high read counts
-            # due to alignment noise, but they have no real-world prevalence.
-            # Restricting to common alleles dramatically improves accuracy
-            # at minimal cost — even rare clinical samples have alleles
-            # in the standard population databases.
-            common_groups = {
-                g: members for g, members in groups_2d.items()
-                if freq_db.get_frequency(g) > FLOOR_FREQUENCY
-            }
-            # Fall back to all groups if filtering left nothing
-            if not common_groups:
-                common_groups = groups_2d
-
-            # Score each (common) 2-field group: read count + frequency bonus
-            group_scores: dict[str, float] = {}
+            # Include ALL 2-field groups that have any read support AND
+            # are in the population frequency database. This is broader
+            # than filtering by read count threshold — even groups with
+            # just a few reads are kept if they're clinically known alleles.
+            # Rare/exotic alleles (not in DB) are excluded to prevent noise.
+            # This ensures we never miss a real allele due to low read count.
+            scored_groups: dict[str, float] = {}
             group_read_counts: dict[str, int] = {}
+
             max_reads = max(
                 (sum(counts.get(m, 0) for m in members)
-                 for members in common_groups.values()),
+                 for members in groups_2d.values()),
                 default=1,
             )
-            for group_name, members in common_groups.items():
+
+            for group_name, members in groups_2d.items():
                 read_score = sum(counts.get(m, 0) for m in members)
                 group_read_counts[group_name] = read_score
                 freq = freq_db.get_frequency(group_name)
-                # Frequency bonus scaled to give common alleles a strong
-                # advantage but still let read evidence dominate
-                freq_bonus = freq * max_reads * 2.0
-                group_scores[group_name] = read_score + freq_bonus
 
-            # Select top allele groups. Use a relaxed read threshold for
-            # alleles with high population frequency — B*08:01 (freq 6%)
-            # with only 55 reads should survive even if min_reads would
-            # normally cut it off. This handles cases where alignment
-            # noise from rare alleles inflates counts artificially.
-            strict_min_reads = max(2, int(total_locus * self.min_read_fraction))
-            lenient_min_reads = 2  # minimum for common alleles
+                # Include if: has population frequency (known allele) AND ≥1 read
+                # OR: has enough reads to be real even without known frequency
+                if read_score < 1:
+                    continue
+                if freq <= FLOOR_FREQUENCY and read_score < max(5, total_locus * 0.005):
+                    continue  # unknown allele with minimal reads = noise
+
+                # Score: reads + frequency bonus
+                freq_bonus = freq * max_reads * 2.0
+                scored_groups[group_name] = read_score + freq_bonus
+
+            # Sort by score but keep ALL qualifying groups (not just top-N)
             top_groups = sorted(
-                ((g, s) for g, s in group_scores.items()
-                 if group_read_counts[g] >= (
-                     lenient_min_reads
-                     if freq_db.get_frequency(g) >= 0.005
-                     else strict_min_reads
-                 )),
+                scored_groups.items(),
                 key=lambda x: -x[1],
             )
             max_groups = min(self.max_candidates, len(top_groups))
@@ -306,7 +294,7 @@ class FastPrefilter:
             candidates = []
             candidate_counts = {}
             for group_name, _ in top_groups:
-                members = common_groups.get(group_name, [])
+                members = groups_2d.get(group_name, [])
                 for m in members:
                     candidates.append(m)
                     candidate_counts[m] = counts[m]
