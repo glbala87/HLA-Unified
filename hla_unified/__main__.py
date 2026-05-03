@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import click
 
+from . import __version__
 from .utils.log import setup_logging
 
 
 @click.group()
-@click.version_option(version="2.0.0")
+@click.version_option(version=__version__)
 def cli():
     """HLA-Unified V2: Multi-strategy HLA typing with ambiguity classification."""
     pass

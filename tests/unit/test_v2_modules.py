@@ -80,7 +80,7 @@ class TestManifest:
     def test_generate_manifest(self):
         from hla_unified.config.manifest import generate_manifest
         m = generate_manifest({"release": "3.56.0", "git_commit": "abc123"})
-        assert m["manifest_version"] == "2.0.0"
+        assert m["manifest_version"] == "2.1.0"
         assert m["imgt_database"]["release"] == "3.56.0"
         assert "python_version" in m["platform"]
         assert "samtools" in m["external_tools"]

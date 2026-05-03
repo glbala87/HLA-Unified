@@ -1,0 +1,62 @@
+{
+  "description": "Accuracy history for algorithm stability tracking. CI appends entries after each successful validation run.",
+  "entries": [
+    {
+      "date": "2026-05-02",
+      "commit": "pre-stability-tracking",
+      "overall_accuracy": 0.9875,
+      "class_i_accuracy": 1.0,
+      "per_locus": {
+        "A": 1.0,
+        "B": 1.0,
+        "C": 1.0,
+        "DRB1": 1.0,
+        "DQB1": 1.0,
+        "DQA1": 1.0,
+        "DPA1": 1.0,
+        "DPB1": 0.9
+      },
+      "n_samples": 10,
+      "synthetic_bam_accuracy": 0.825,
+      "synthetic_bam_n_samples": 5
+    },
+    {
+      "date": "2026-05-02",
+      "commit": "ebabe72",
+      "overall_accuracy": 0.9875,
+      "class_i_accuracy": 1.0,
+      "per_locus": {
+        "A": 1.0,
+        "B": 1.0,
+        "C": 1.0,
+        "DPA1": 1.0,
+        "DPB1": 0.9,
+        "DQA1": 1.0,
+        "DQB1": 1.0,
+        "DRB1": 1.0
+      },
+      "n_samples": 10,
+      "synthetic_bam_accuracy": 0.825,
+      "synthetic_bam_n_samples": 5
+    },
+    {
+      "date": "2026-05-02",
+      "commit": "ebabe72",
+      "overall_accuracy": 0.9875,
+      "class_i_accuracy": 1.0,
+      "per_locus": {
+        "A": 1.0,
+        "B": 1.0,
+        "C": 1.0,
+        "DPA1": 1.0,
+        "DPB1": 0.9,
+        "DQA1": 1.0,
+        "DQB1": 1.0,
+        "DRB1": 1.0
+      },
+      "n_samples": 10,
+      "synthetic_bam_accuracy": 0.95,
+      "synthetic_bam_n_samples": 5
+    }
+  ]
+}

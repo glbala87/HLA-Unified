@@ -84,10 +84,11 @@ class ClinicalReporter:
     def __init__(
         self,
         min_confidence: str = "MEDIUM",
-        version: str = "2.0.0",
+        version: str | None = None,
     ) -> None:
         self.min_confidence = min_confidence
-        self.version = version
+        import hla_unified as _hla
+        self.version = version or _hla.__version__
         self._confidence_order = {
             "HIGH": 3, "MEDIUM": 2, "LOW": 1, "VERY_LOW": 0,
         }

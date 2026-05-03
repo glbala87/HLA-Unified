@@ -213,8 +213,14 @@ class FastPrefilter:
 
         with pysam.AlignmentFile(str(bam_path), "rb") as bam:
             for read in bam.fetch(until_eof=True):
-                if read.is_unmapped or read.mapping_quality < 1:
+                if read.is_unmapped:
                     continue
+                # Do NOT filter on mapping_quality here. minimap2 sets
+                # mapq=0 for reads that map equally well to multiple
+                # alleles, which is the norm for HLA (alleles are >95%
+                # identical). Filtering mapq>0 discards ~90% of reads.
+                # Instead, count all mapped reads — the downstream
+                # k-mer and ILP engines handle multi-mapping properly.
                 total_reads += 1
                 ref_name = read.reference_name
                 if ref_name:

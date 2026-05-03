@@ -32,12 +32,13 @@ class OutputWriter:
         out_dir: Path,
         data_type: str = "short",
         output_resolution: int | str = "max",
-        version: str = "2.0.0",
+        version: str | None = None,
     ) -> None:
         self.out_dir = Path(out_dir)
         self.data_type = data_type
         self.output_resolution = output_resolution
-        self.version = version
+        import hla_unified
+        self.version = version or hla_unified.__version__
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
     def write_all(

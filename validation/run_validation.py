@@ -300,10 +300,11 @@ def main() -> int:
     print(f"  Reports directory: {REPORTS_DIR}")
     print(f"{'=' * 70}")
 
-    # Return non-zero if accuracy < 90%
-    if full_report.overall_accuracy < 0.90:
-        print("\n  WARNING: Overall accuracy below 90% threshold!")
+    # Return non-zero if accuracy < 95% (production gate)
+    if full_report.overall_accuracy < 0.95:
+        print(f"\n  FAIL: Overall accuracy {full_report.overall_accuracy:.1%} below 95% threshold!")
         return 1
+    print(f"\n  PASS: Overall accuracy {full_report.overall_accuracy:.1%} >= 95% threshold")
     return 0
 
 

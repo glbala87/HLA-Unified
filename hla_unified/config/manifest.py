@@ -18,6 +18,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import hla_unified
+
 logger = logging.getLogger(__name__)
 
 
@@ -75,7 +77,7 @@ def generate_manifest(
         Dict suitable for JSON serialization.
     """
     manifest = {
-        "manifest_version": "2.0.0",
+        "manifest_version": "2.1.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         # Platform
         "platform": {
@@ -110,7 +112,7 @@ def generate_manifest(
         },
         # HLA-Unified version
         "hla_unified": {
-            "version": "2.0.0",
+            "version": hla_unified.__version__,
         },
     }
 

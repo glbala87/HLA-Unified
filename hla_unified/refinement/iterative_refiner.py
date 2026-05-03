@@ -101,8 +101,8 @@ class IterativeRefiner:
     def __init__(
         self,
         threads: int = 4,
-        top_n_2digit: int = 6,
-        top_n_4digit: int = 20,
+        top_n_2digit: int = 10,
+        top_n_4digit: int = 30,
         data_type: str = "short",
     ) -> None:
         if data_type not in ALIGNER_CONFIG:

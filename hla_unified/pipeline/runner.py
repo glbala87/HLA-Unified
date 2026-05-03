@@ -42,6 +42,7 @@ from ..kmer.validator import KmerValidator, KmerValidationResult
 from ..assembly.targeted_assembler import TargetedAssembler, AssemblyResult
 from ..utils.io import ensure_dir, write_fasta
 from ..utils.external import run_cmd, run_pipeline, check_all_tools, ToolError
+import hla_unified
 
 logger = logging.getLogger(__name__)
 
@@ -135,8 +136,8 @@ class UnifiedPipeline:
         skip_kmer: bool = False,
         skip_assembly: bool = False,
         # Phase parameters
-        max_prefilter_candidates: int = 80,
-        max_refined_candidates: int = 20,
+        max_prefilter_candidates: int = 150,
+        max_refined_candidates: int = 30,
         confidence_threshold: float = 0.90,
         assembly_confidence_trigger: float = 0.80,
         # Genotyping engine: "alignment" (legacy ILP), "kmer", or "hybrid"
@@ -398,13 +399,19 @@ class UnifiedPipeline:
         if self.engine in ("kmer", "hybrid"):
             from ..genotyper.kmer_genotyper import kmer_genotype_all_loci
             try:
+                # Don't restrict k-mer candidates from prefilter — the
+                # prefilter read counts are dominated by multi-mapping
+                # noise from non-HLA MHC genes, biasing candidate selection.
+                # The k-mer genotyper's own coverage scoring on HLA-filtered
+                # reads is a better signal. Pass None to search all alleles.
                 kmer_genotype_results = kmer_genotype_all_loci(
                     fastq_paths=[hla_r1] + ([hla_r2] if hla_r2 else []),
                     imgt_db=self.imgt_db,
                     loci=self.loci,
                     k=21,
                     max_reads=500_000,
-                    candidates_per_locus=prefilter_candidates,
+                    candidates_per_locus=None,
+                    data_type=self.data_type,
                 )
                 phases_completed.append("kmer_genotyping")
             except Exception as e:
@@ -426,39 +433,76 @@ class UnifiedPipeline:
                         solver_status="kmer_engine",
                     )
         elif self.engine == "hybrid" and kmer_genotype_results:
-            # Hybrid: ALWAYS use k-mer results when k-mer produced something.
-            # The k-mer engine is more accurate than alignment-based ILP for
-            # HLA typing; we keep the alignment pipeline for QC and read
-            # statistics, but the calls themselves come from k-mer.
+            # Hybrid consensus: use k-mer results when they agree with ILP
+            # at 2-field resolution, OR when k-mer has high confidence and
+            # ILP is weak. If they disagree and both are strong, prefer k-mer
+            # (alignment-free, more robust to aligner artifacts).
             from ..reference.loci import truncate_to_resolution
             for locus, kmer_res in kmer_genotype_results.items():
                 if not kmer_res.allele1:
                     continue
                 ilp_res = ilp_results.get(locus)
+
+                # Format for logging
                 ilp_pair_str = ""
+                kmer_pair_str = (
+                    f"({truncate_to_resolution(kmer_res.allele1, 2).removeprefix('HLA-')}, "
+                    f"{truncate_to_resolution(kmer_res.allele2, 2).removeprefix('HLA-')})"
+                )
                 if ilp_res and ilp_res.allele1:
                     ilp_pair_str = (
                         f"({truncate_to_resolution(ilp_res.allele1, 2).removeprefix('HLA-')}, "
                         f"{truncate_to_resolution(ilp_res.allele2, 2).removeprefix('HLA-')})"
                     )
-                kmer_pair_str = (
-                    f"({truncate_to_resolution(kmer_res.allele1, 2).removeprefix('HLA-')}, "
-                    f"{truncate_to_resolution(kmer_res.allele2, 2).removeprefix('HLA-')})"
-                )
-                logger.info(
-                    "  %s: ILP=%s, kmer=%s — using k-mer",
-                    locus, ilp_pair_str or "(none)", kmer_pair_str,
-                )
-                ilp_results[locus] = ILPResult(
-                    locus=locus,
-                    allele1=kmer_res.allele1,
-                    allele2=kmer_res.allele2,
-                    reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
-                    total_reads=kmer_res.n_alleles_evaluated,
-                    objective_value=kmer_res.score,
-                    is_homozygous=kmer_res.is_homozygous,
-                    solver_status="hybrid_kmer_override",
-                )
+
+                # Check 2-field agreement between ILP and k-mer
+                engines_agree = False
+                if ilp_res and ilp_res.allele1:
+                    ilp_set = {
+                        truncate_to_resolution(ilp_res.allele1, 2),
+                        truncate_to_resolution(ilp_res.allele2, 2),
+                    }
+                    kmer_set = {
+                        truncate_to_resolution(kmer_res.allele1, 2),
+                        truncate_to_resolution(kmer_res.allele2, 2),
+                    }
+                    engines_agree = (ilp_set == kmer_set)
+
+                # Decision logic:
+                # 1. Engines agree at 2-field → use k-mer (finer resolution)
+                # 2. Engines disagree, ILP explained < 50% reads → use k-mer
+                # 3. Engines disagree, both strong → use k-mer (more robust)
+                use_kmer = True
+                reason = "kmer"
+                if engines_agree:
+                    reason = "consensus"
+                elif ilp_res and ilp_res.total_reads > 0:
+                    ilp_frac = ilp_res.reads_explained / ilp_res.total_reads
+                    if ilp_frac > 0.8 and kmer_res.confidence < 0.5:
+                        # Strong ILP, weak k-mer → keep ILP
+                        use_kmer = False
+                        reason = "ilp_preferred"
+
+                if use_kmer:
+                    logger.info(
+                        "  %s: ILP=%s, kmer=%s — using %s",
+                        locus, ilp_pair_str or "(none)", kmer_pair_str, reason,
+                    )
+                    ilp_results[locus] = ILPResult(
+                        locus=locus,
+                        allele1=kmer_res.allele1,
+                        allele2=kmer_res.allele2,
+                        reads_explained=kmer_res.kmers_supporting_a1 + kmer_res.kmers_supporting_a2,
+                        total_reads=kmer_res.n_alleles_evaluated,
+                        objective_value=kmer_res.score,
+                        is_homozygous=kmer_res.is_homozygous,
+                        solver_status=f"hybrid_{reason}",
+                    )
+                else:
+                    logger.info(
+                        "  %s: ILP=%s, kmer=%s — keeping ILP (%s)",
+                        locus, ilp_pair_str, kmer_pair_str, reason,
+                    )
 
         # === Phase 4: Bayesian Confidence (parallelized) ===
         vb_results: dict[str, ConfidenceResult] = {}
@@ -861,8 +905,8 @@ class UnifiedPipeline:
             #    override result)
             # 2. Otherwise prefer VB alleles if available
             # 3. Fall back to ILP
-            is_kmer_result = ilp_r.solver_status in (
-                "kmer_engine", "kmer_fallback", "hybrid_kmer_override",
+            is_kmer_result = ilp_r.solver_status.startswith("hybrid_") or ilp_r.solver_status in (
+                "kmer_engine", "kmer_fallback",
             )
             if is_kmer_result:
                 a1 = ilp_r.allele1
@@ -968,7 +1012,7 @@ class UnifiedPipeline:
             # Provenance header: ties every call to exact IMGT release
             fh.write(f"## IPD-IMGT/HLA Release: {result.imgt_release}\n")
             fh.write(f"## IMGT Commit: {result.imgt_commit}\n")
-            fh.write(f"## HLA-Unified Version: 2.0.0\n")
+            fh.write(f"## HLA-Unified Version: {hla_unified.__version__}\n")
             fh.write(f"## Data Type: {self.data_type}\n")
             fh.write(f"## Output Resolution: {self.output_resolution}\n")
 

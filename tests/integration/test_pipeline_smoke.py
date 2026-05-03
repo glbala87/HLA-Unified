@@ -246,6 +246,6 @@ class TestManifestIntegration:
         with tempfile.TemporaryDirectory() as td:
             path = write_manifest(manifest, Path(td))
             data = json.loads(path.read_text())
-            assert data["hla_unified"]["version"] == "2.0.0"
+            assert data["hla_unified"]["version"] == "2.1.0"
             assert "samtools" in data["external_tools"]
             assert data["imgt_database"]["release"] == "3.56.0"

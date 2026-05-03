@@ -20,20 +20,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Lint with ruff
+        run: |
+          pip install ruff
+          ruff check hla_unified/ --select E,F,W --ignore E501
+
       - name: Run unit tests
-        run: pytest tests/unit/ -v --tb=short
+        run: pytest tests/unit/ -v --tb=short -x
 
       - name: Run integration tests
-        run: pytest tests/integration/ -v --tb=short
+        run: pytest tests/integration/ -v --tb=short -x
+
+      - name: Run regression accuracy gates
+        run: pytest tests/regression/ -v --tb=short -x -m regression
 
       - name: Run validation framework
         run: python validation/run_validation.py
+
+      - name: Track accuracy stability
+        run: python validation/track_accuracy.py --append --check
 
   lint:
     runs-on: ubuntu-latest
@@ -45,10 +57,32 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Check imports
+      - name: Check imports and version
         run: |
           pip install -e ".[dev]"
           python -c "import hla_unified; print(f'v{hla_unified.__version__}')"
           python -c "from hla_unified.benchmark.runner import BenchmarkRunner"
           python -c "from hla_unified.benchmark.consensus import CrossCallerConsensus"
           python -c "from hla_unified.pipeline.runner import UnifiedPipeline"
+
+      - name: Type check critical paths
+        run: |
+          pip install mypy
+          mypy hla_unified/pipeline/runner.py hla_unified/genotyper/kmer_genotyper.py \
+            --ignore-missing-imports --no-error-summary || true
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check for known vulnerabilities
+        run: |
+          pip install pip-audit
+          pip install -e .
+          pip-audit --strict || true

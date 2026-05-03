@@ -4,10 +4,21 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "hla-unified"
-version = "2.0.0"
+version = "2.1.0"
 description = "Multi-strategy HLA typing with ambiguity classification, novel allele detection, and clinical reporting"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
 dependencies = [
     "pysam>=0.21",
     "numpy>=1.24",
@@ -20,14 +31,30 @@ dependencies = [
 
 [project.optional-dependencies]
 fast = ["numba>=0.57"]
-dev = ["pytest>=7.0", "pytest-cov"]
+dev = ["pytest>=7.0", "pytest-cov", "ruff>=0.1"]
 benchmark = ["matplotlib>=3.7", "pandas>=2.0"]
 
 [project.scripts]
 hla-unified = "hla_unified.__main__:cli"
+
+[project.urls]
+Homepage = "https://github.com/ANHIG/HLA-LA"
+Documentation = "https://github.com/ANHIG/HLA-LA#readme"
+Issues = "https://github.com/ANHIG/HLA-LA/issues"
 
 [tool.setuptools.packages.find]
 include = ["hla_unified*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "regression: accuracy gate tests that prevent regressions",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
